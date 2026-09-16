@@ -63,3 +63,34 @@ def test_default_model_path_is_valid_hosted_fingerprinted_checkpoint():
     assert args.model_path.count("/") == 1
     assert "output_barebone_sft_chat" not in args.model_path
 
+
+
+def test_eval_wrapper_requires_ccdr_artifacts(tmp_path):
+    from run_ccdr_evals_with_fsr import validate_ccdr_model_dir
+
+    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    try:
+        validate_ccdr_model_dir(tmp_path)
+    except FileNotFoundError as exc:
+        assert "ccdr_config.json" in str(exc)
+    else:
+        raise AssertionError("Expected missing CCDR artifacts to fail validation")
+
+
+def test_eval_wrapper_accepts_nonzero_ccdr_stats(tmp_path):
+    from run_ccdr_evals_with_fsr import validate_ccdr_model_dir
+
+    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "ccdr_config.json").write_text('{"model_path": "source-model"}', encoding="utf-8")
+    (tmp_path / "model.safetensors").write_bytes(b"stub")
+    stats_dir = tmp_path / "results"
+    stats_dir.mkdir()
+    (stats_dir / "ccdr_layer_stats.csv").write_text(
+        "tensor_name,selected_k\nmodel.layers.0.self_attn.q_proj,4\n",
+        encoding="utf-8",
+    )
+
+    provenance = validate_ccdr_model_dir(tmp_path)
+
+    assert provenance["source_model_path"] == "source-model"
+    assert provenance["num_nonzero_k_layers"] == 1
